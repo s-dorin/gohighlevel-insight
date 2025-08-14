@@ -14,7 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      kb_articles: {
+        Row: {
+          category: string | null
+          content: string | null
+          created_at: string
+          id: string
+          last_indexed_at: string | null
+          last_scraped_at: string | null
+          summary: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string
+          url: string
+          vector_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          last_indexed_at?: string | null
+          last_scraped_at?: string | null
+          summary?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          url: string
+          vector_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          last_indexed_at?: string | null
+          last_scraped_at?: string | null
+          summary?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          url?: string
+          vector_id?: string | null
+        }
+        Relationships: []
+      }
+      scraping_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          failed_urls: number | null
+          id: string
+          processed_urls: number | null
+          started_at: string | null
+          status: string
+          total_urls: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_urls?: number | null
+          id?: string
+          processed_urls?: number | null
+          started_at?: string | null
+          status?: string
+          total_urls?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          failed_urls?: number | null
+          id?: string
+          processed_urls?: number | null
+          started_at?: string | null
+          status?: string
+          total_urls?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
