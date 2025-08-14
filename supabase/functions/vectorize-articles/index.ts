@@ -21,6 +21,12 @@ serve(async (req) => {
 
   try {
     console.log('Starting article vectorization process');
+    console.log('Qdrant URL:', QDRANT_URL);
+    console.log('Qdrant API Key available:', !!QDRANT_API_KEY);
+    
+    if (!QDRANT_API_KEY) {
+      throw new Error('QDRANT_API_KEY is not configured');
+    }
 
     // Get articles that haven't been indexed yet
     const { data: articles, error: articlesError } = await supabase
