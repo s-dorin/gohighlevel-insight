@@ -22,11 +22,11 @@ serve(async (req) => {
   try {
     console.log('Starting article vectorization process');
 
-    // Get articles that haven't been indexed yet or were updated since last indexing
+    // Get articles that haven't been indexed yet
     const { data: articles, error: articlesError } = await supabase
       .from('kb_articles')
       .select('*')
-      .or('last_indexed_at.is.null,last_scraped_at.gt.last_indexed_at')
+      .is('last_indexed_at', null)
       .order('created_at', { ascending: true });
 
     if (articlesError) {
