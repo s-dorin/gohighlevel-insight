@@ -35,21 +35,31 @@ export const KnowledgeBaseManager = () => {
   const loadArticles = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // Get recent articles for display
+      const { data: recentArticles, error: articlesError } = await supabase
         .from('kb_articles')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (error) {
-        throw error;
+      if (articlesError) {
+        throw articlesError;
       }
 
-      setArticles(data || []);
+      setArticles(recentArticles || []);
       
-      // Calculate stats
-      const total = data?.length || 0;
-      const indexed = data?.filter(article => article.last_indexed_at).length || 0;
+      // Get accurate stats for all articles
+      const { data: totalStats, error: totalError } = await supabase
+        .from('kb_articles')
+        .select('id, last_indexed_at');
+
+      if (totalError) {
+        throw totalError;
+      }
+
+      // Calculate accurate stats
+      const total = totalStats?.length || 0;
+      const indexed = totalStats?.filter(article => article.last_indexed_at).length || 0;
       const pending = total - indexed;
       
       setStats({ total, indexed, pending });
