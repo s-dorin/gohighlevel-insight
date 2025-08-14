@@ -1,11 +1,66 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
+import { KnowledgeBaseManager } from '@/components/KnowledgeBaseManager';
+import { ArticleSearch } from '@/components/ArticleSearch';
+import { JobStatus } from '@/components/JobStatus';
 
 const Index = () => {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState('search');
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold mb-4 text-foreground">
+            HighLevel Knowledge Base Manager
+          </h1>
+          <p className="text-xl text-muted-foreground">
+            Scrape, process și search în baza de cunoștințe HighLevel
+          </p>
+        </div>
+
+        <div className="flex justify-center mb-8">
+          <div className="flex space-x-4 bg-card p-1 rounded-lg">
+            <button
+              onClick={() => setActiveTab('search')}
+              className={`px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'search'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Search Articles
+            </button>
+            <button
+              onClick={() => setActiveTab('manage')}
+              className={`px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'manage'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Manage Database
+            </button>
+            <button
+              onClick={() => setActiveTab('status')}
+              className={`px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'status'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Job Status
+            </button>
+          </div>
+        </div>
+
+        <div className="max-w-6xl mx-auto">
+          {activeTab === 'search' && <ArticleSearch />}
+          {activeTab === 'manage' && <KnowledgeBaseManager />}
+          {activeTab === 'status' && <JobStatus />}
+        </div>
       </div>
     </div>
   );

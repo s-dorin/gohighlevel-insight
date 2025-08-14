@@ -1,1 +1,44 @@
 project_id = "zdmjwyzchjriezxnjppg"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[db]
+pooler_enabled = false
+
+[db.pooler]
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+ip_version = "IPv4"
+
+[studio]
+enabled = true
+api_url = "http://127.0.0.1:54321"
+
+[inbound_mail]
+enabled = false
+
+[storage]
+enabled = true
+image_transformation_enabled = true
+
+[functions.scrape-knowledge-base]
+verify_jwt = false
+
+[functions.vectorize-articles]
+verify_jwt = false
+
+[functions.search-knowledge-base]
+verify_jwt = false
