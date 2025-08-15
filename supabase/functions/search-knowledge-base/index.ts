@@ -37,7 +37,7 @@ serve(async (req) => {
     const queryEmbedding = await getEmbedding(query);
 
     // Search in Qdrant
-    const searchResponse = await fetch(`${QDRANT_URL}/collections/highlevel_kb/points/search`, {
+    const searchResponse = await fetch(`${QDRANT_URL}/collections/knowledge_base/points/search`, {
       method: 'POST',
       headers: {
         'Api-Key': QDRANT_API_KEY!,
@@ -60,14 +60,11 @@ serve(async (req) => {
     
     // Format results
     const formattedResults = searchResults.result.map((result: any) => ({
-      id: result.payload.article_id,
+      id: result.id,
       title: result.payload.title,
       url: result.payload.url,
-      category: result.payload.category,
-      content_preview: result.payload.content_preview,
-      similarity_score: result.score,
-      created_at: result.payload.created_at,
-      updated_at: result.payload.updated_at
+      content_preview: result.payload.content.substring(0, 200) + '...',
+      similarity_score: result.score
     }));
 
     console.log(`Found ${formattedResults.length} relevant articles`);
@@ -93,13 +90,29 @@ serve(async (req) => {
 });
 
 async function getEmbedding(text: string): Promise<number[]> {
-  // For now, return a mock embedding
-  // In production, you would call OpenAI's embedding API here
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   
-  // Generate a simple mock embedding of the right size (1536 dimensions)
-  const mockEmbedding = Array.from({ length: 1536 }, () => Math.random() - 0.5);
-  
-  // Normalize the vector
-  const magnitude = Math.sqrt(mockEmbedding.reduce((sum, val) => sum + val * val, 0));
-  return mockEmbedding.map(val => val / magnitude);
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY not found in environment variables');
+  }
+
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text.substring(0, 8000),
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI embedding error: ${response.status} ${error}`);
+  }
+
+  const result = await response.json();
+  return result.data[0].embedding;
 }
