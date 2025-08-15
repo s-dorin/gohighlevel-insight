@@ -20,15 +20,25 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting article vectorization process');
+    console.log('🚀 Starting vectorization process');
     console.log('Qdrant URL:', QDRANT_URL);
     console.log('Qdrant API Key available:', !!QDRANT_API_KEY);
+    
+    // Return early for testing
+    return new Response(JSON.stringify({ 
+      message: 'Function is accessible',
+      qdrant_configured: !!QDRANT_API_KEY,
+      url: QDRANT_URL
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
     
     if (!QDRANT_API_KEY) {
       throw new Error('QDRANT_API_KEY is not configured');
     }
 
     // Get articles that haven't been indexed yet
+    console.log('📚 Fetching unindexed articles...');
     const { data: articles, error: articlesError } = await supabase
       .from('kb_articles')
       .select('*')
@@ -53,13 +63,13 @@ serve(async (req) => {
     console.log(`Found ${articles.length} articles to vectorize`);
 
     // Ensure Qdrant collection exists
+    console.log('🔍 Checking Qdrant collection...');
     await ensureQdrantCollection();
 
     let processedCount = 0;
     let failedCount = 0;
 
     // Process articles in batches (smaller batch size to avoid timeout)
-    const batchSize = 1; // Process one article at a time to avoid timeout
     const maxArticles = Math.min(articles.length, 10); // Limit to max 10 articles per run
     
     console.log(`Processing first ${maxArticles} articles out of ${articles.length} total`);
