@@ -58,26 +58,29 @@ serve(async (req) => {
     let processedCount = 0;
     let failedCount = 0;
 
-    // Process articles in batches
-    const batchSize = 3;
-    for (let i = 0; i < articles.length; i += batchSize) {
-      const batch = articles.slice(i, i + batchSize);
+    // Process articles in batches (smaller batch size to avoid timeout)
+    const batchSize = 1; // Process one article at a time to avoid timeout
+    const maxArticles = Math.min(articles.length, 10); // Limit to max 10 articles per run
+    
+    console.log(`Processing first ${maxArticles} articles out of ${articles.length} total`);
+    
+    for (let i = 0; i < maxArticles; i++) {
+      const article = articles[i];
       
-      const batchPromises = batch.map(async (article) => {
-        try {
-          await vectorizeAndStoreArticle(article);
-          processedCount++;
-          console.log(`Vectorized article: ${article.title}`);
-        } catch (error) {
-          failedCount++;
-          console.error(`Failed to vectorize article ${article.id}:`, error);
-        }
-      });
+      try {
+        console.log(`Processing article ${i + 1}/${maxArticles}: ${article.title}`);
+        await vectorizeAndStoreArticle(article);
+        processedCount++;
+        console.log(`✅ Successfully vectorized: ${article.title}`);
+      } catch (error) {
+        failedCount++;
+        console.error(`❌ Failed to vectorize article ${article.id}:`, error);
+      }
 
-      await Promise.all(batchPromises);
-
-      // Small delay between batches to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Small delay between articles to avoid rate limiting
+      if (i < maxArticles - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
     console.log(`Vectorization completed. Processed: ${processedCount}, Failed: ${failedCount}`);
