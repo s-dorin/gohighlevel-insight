@@ -19,144 +19,83 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🚀 Starting vectorization process');
+    const { batch_size = 20 } = await req.json().catch(() => ({}));
+    console.log('🚀 Starting vectorization process with batch size:', batch_size);
     
-    // Get secrets fresh from environment
     const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
-    // TEMPORARY: Add your OpenAI API key here for testing
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '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';
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
-    console.log('🔍 Debug environment variables:');
-    console.log('QDRANT_API_KEY exists:', !!QDRANT_API_KEY);
-    console.log('QDRANT_API_KEY length:', QDRANT_API_KEY?.length || 0);
-    console.log('OPENAI_API_KEY exists:', !!OPENAI_API_KEY);
-    console.log('OPENAI_API_KEY length:', OPENAI_API_KEY?.length || 0);
-    console.log('OPENAI_API_KEY value preview:', OPENAI_API_KEY?.substring(0, 10) || 'null/undefined');
-    
-    const results = {
-      qdrant_url: QDRANT_URL,
-      qdrant_key_available: !!QDRANT_API_KEY,
-      openai_key_available: !!OPENAI_API_KEY,
-      debug: {
-        qdrant_length: QDRANT_API_KEY?.length || 0,
-        openai_length: OPENAI_API_KEY?.length || 0,
-        openai_preview: OPENAI_API_KEY?.substring(0, 10) || 'null/undefined'
+    if (!QDRANT_API_KEY || !OPENAI_API_KEY) {
+      throw new Error('Missing required API keys');
+    }
+
+    // Ensure knowledge_base collection exists in Qdrant
+    const qdrantResponse = await fetch(`${QDRANT_URL}/collections`, {
+      headers: {
+        'Api-Key': QDRANT_API_KEY,
+        'Content-Type': 'application/json',
       },
-      tests: []
-    };
-
-    // Test 1: Check API keys
-    results.tests.push('✅ API keys checked');
+    });
     
-    // Debug: Show available env vars (without values)
-    const envVars = Object.keys(Deno.env.toObject());
-    results.tests.push(`🔍 Available env vars: ${envVars.filter(k => k.includes('API')).join(', ')}`);
-    
-    if (!QDRANT_API_KEY || QDRANT_API_KEY.length === 0) {
-      results.tests.push('❌ QDRANT_API_KEY missing or empty');
-      return new Response(JSON.stringify({ 
-        success: false,
-        error: 'QDRANT_API_KEY not configured',
-        results: results
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    
-    if (!OPENAI_API_KEY || OPENAI_API_KEY.length === 0) {
-      results.tests.push(`❌ OPENAI_API_KEY missing or empty (length: ${OPENAI_API_KEY?.length || 0})`);
-      return new Response(JSON.stringify({ 
-        success: false,
-        error: 'OPENAI_API_KEY not configured',
-        results: results
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    
-    results.tests.push(`✅ OPENAI_API_KEY found (${OPENAI_API_KEY.substring(0, 8)}...)`);
-    results.tests.push(`✅ QDRANT_API_KEY found (${QDRANT_API_KEY.substring(0, 8)}...)`);
-
-    // Test 2: Qdrant connection and collection setup
-    results.tests.push('🔍 Testing Qdrant...');
-    try {
-      const qdrantResponse = await fetch(`${QDRANT_URL}/collections`, {
-        headers: {
-          'Api-Key': QDRANT_API_KEY,
-          'Content-Type': 'application/json',
-        },
-      });
+    if (qdrantResponse.ok) {
+      const collections = await qdrantResponse.json();
+      const hasKnowledgeBase = collections.result?.collections?.some(col => col.name === 'knowledge_base');
       
-      if (qdrantResponse.ok) {
-        const collections = await qdrantResponse.json();
-        results.tests.push(`✅ Qdrant accessible - ${collections.result?.collections?.length || 0} collections`);
-        
-        // Check if knowledge_base collection exists
-        const hasKnowledgeBase = collections.result?.collections?.some(col => col.name === 'knowledge_base');
-        
-        if (!hasKnowledgeBase) {
-          results.tests.push('🔧 Creating knowledge_base collection...');
-          // Create the knowledge_base collection
-          const createResponse = await fetch(`${QDRANT_URL}/collections/knowledge_base`, {
-            method: 'PUT',
-            headers: {
-              'Api-Key': QDRANT_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              vectors: {
-                size: 1536, // OpenAI text-embedding-3-small dimension
-                distance: 'Cosine'
-              }
-            }),
-          });
-          
-          if (createResponse.ok) {
-            results.tests.push('✅ Created knowledge_base collection');
-          } else {
-            const error = await createResponse.text();
-            results.tests.push(`❌ Failed to create collection: ${createResponse.status} ${error}`);
-            throw new Error(`Failed to create collection: ${createResponse.status}`);
-          }
-        } else {
-          results.tests.push('✅ knowledge_base collection exists');
-        }
-      } else {
-        const error = await qdrantResponse.text();
-        results.tests.push(`❌ Qdrant error: ${qdrantResponse.status} ${error}`);
-        throw new Error(`Qdrant error: ${qdrantResponse.status}`);
+      if (!hasKnowledgeBase) {
+        console.log('Creating knowledge_base collection...');
+        await fetch(`${QDRANT_URL}/collections/knowledge_base`, {
+          method: 'PUT',
+          headers: {
+            'Api-Key': QDRANT_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            vectors: {
+              size: 1536, // OpenAI text-embedding-3-small dimension
+              distance: 'Cosine'
+            }
+          }),
+        });
       }
-    } catch (qdrantError) {
-      results.tests.push(`❌ Qdrant connection failed: ${qdrantError.message}`);
-      throw qdrantError;
     }
 
-    // Test 3: Database query
-    results.tests.push('📚 Testing database...');
+    // Get unvectorized articles
     const { data: articles, error: articlesError } = await supabase
       .from('kb_articles')
-      .select('id, title, content')
+      .select('id, title, content, url')
       .is('last_indexed_at', null)
-      .limit(10);
+      .not('content', 'is', null)
+      .limit(batch_size);
 
     if (articlesError) {
-      results.tests.push(`❌ Database error: ${articlesError.message}`);
-      throw articlesError;
+      throw new Error(`Database error: ${articlesError.message}`);
     }
 
-    results.tests.push(`✅ Database query successful - ${articles?.length || 0} articles found`);
-    
-    if (articles && articles.length > 0) {
-      const testArticle = articles[0];
-      results.tests.push(`Test article: "${testArticle.title}" (${testArticle.content?.length || 0} chars)`);
+    if (!articles || articles.length === 0) {
+      return new Response(JSON.stringify({ 
+        success: true,
+        message: 'No articles to vectorize',
+        processed: 0,
+        remaining: 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-      // Test 4: OpenAI API
-      if (testArticle.content) {
-        results.tests.push('🤖 Testing OpenAI...');
+    console.log(`Processing ${articles.length} articles...`);
+    
+    let processedCount = 0;
+    let failedCount = 0;
+
+    // Process articles in smaller batches to avoid rate limits
+    const processingBatchSize = 3;
+    for (let i = 0; i < articles.length; i += processingBatchSize) {
+      const batch = articles.slice(i, i + processingBatchSize);
+      
+      const batchPromises = batch.map(async (article) => {
         try {
-          const openaiResponse = await fetch('https://api.openai.com/v1/embeddings', {
+          // Generate embedding
+          const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -164,94 +103,110 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               model: 'text-embedding-3-small',
-              input: testArticle.content.substring(0, 1000),
+              input: article.content.substring(0, 8000), // Limit content length
             }),
           });
 
-          if (openaiResponse.ok) {
-            const embeddingResult = await openaiResponse.json();
-            results.tests.push(`✅ OpenAI successful - ${embeddingResult.data[0].embedding.length} dimensions`);
-          } else {
-            const error = await openaiResponse.text();
-            results.tests.push(`❌ OpenAI error: ${openaiResponse.status} ${error}`);
+          if (!embeddingResponse.ok) {
+            const error = await embeddingResponse.text();
+            throw new Error(`OpenAI error: ${embeddingResponse.status} ${error}`);
           }
-        } catch (openaiError) {
-          results.tests.push(`❌ OpenAI connection failed: ${openaiError.message}`);
+
+          const embeddingResult = await embeddingResponse.json();
+          const embedding = embeddingResult.data[0].embedding;
+
+          // Store in Qdrant
+          const qdrantResponse = await fetch(`${QDRANT_URL}/collections/knowledge_base/points`, {
+            method: 'PUT',
+            headers: {
+              'Api-Key': QDRANT_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              points: [{
+                id: article.id,
+                vector: embedding,
+                payload: {
+                  title: article.title,
+                  content: article.content.substring(0, 2000), // Store shorter content in payload
+                  url: article.url
+                }
+              }]
+            }),
+          });
+
+          if (!qdrantResponse.ok) {
+            const error = await qdrantResponse.text();
+            throw new Error(`Qdrant error: ${qdrantResponse.status} ${error}`);
+          }
+
+          // Update database with vector_id and last_indexed_at
+          await supabase
+            .from('kb_articles')
+            .update({ 
+              last_indexed_at: new Date().toISOString(),
+              vector_id: article.id
+            })
+            .eq('id', article.id);
+
+          processedCount++;
+          console.log(`✅ Vectorized: ${article.title} (${processedCount}/${articles.length})`);
+
+        } catch (error) {
+          failedCount++;
+          console.error(`❌ Failed to vectorize ${article.title}:`, error.message);
         }
+      });
+
+      await Promise.all(batchPromises);
+      
+      // Small delay between batches to respect rate limits
+      if (i + processingBatchSize < articles.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    // Now do actual vectorization
-    results.tests.push('🚀 Starting vectorization...');
-    
-    let processedCount = 0;
-    for (const article of articles || []) {
-      if (!article.content) continue;
+    // Check if there are more articles to process
+    const { count: remainingCount } = await supabase
+      .from('kb_articles')
+      .select('*', { count: 'exact', head: true })
+      .is('last_indexed_at', null)
+      .not('content', 'is', null);
+
+    console.log(`Batch completed. Processed: ${processedCount}, Failed: ${failedCount}, Remaining: ${remainingCount || 0}`);
+
+    // Auto-continue if there are more articles to process
+    if (remainingCount && remainingCount > 0) {
+      console.log('Auto-continuing vectorization for remaining articles...');
       
       try {
-        // Generate embedding
-        const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: article.content,
-          }),
-        });
-
-        if (!embeddingResponse.ok) {
-          throw new Error(`OpenAI error: ${embeddingResponse.status}`);
-        }
-
-        const embeddingResult = await embeddingResponse.json();
-        const embedding = embeddingResult.data[0].embedding;
-
-        // Store in Qdrant
-        const qdrantResponse = await fetch(`${QDRANT_URL}/collections/knowledge_base/points`, {
-          method: 'PUT',
-          headers: {
-            'Api-Key': QDRANT_API_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            points: [{
-              id: article.id,
-              vector: embedding,
-              payload: {
-                title: article.title,
-                content: article.content,
-              }
-            }]
-          }),
-        });
-
-        if (!qdrantResponse.ok) {
-          throw new Error(`Qdrant error: ${qdrantResponse.status}`);
-        }
-
-        // Update database
-        await supabase
-          .from('kb_articles')
-          .update({ last_indexed_at: new Date().toISOString() })
-          .eq('id', article.id);
-
-        processedCount++;
-        results.tests.push(`✅ Processed: ${article.title}`);
-
-      } catch (error) {
-        results.tests.push(`❌ Failed: ${article.title} - ${error.message}`);
+        const continueResponse = await fetch(
+          `${Deno.env.get('SUPABASE_URL')}/functions/v1/vectorize-articles`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
+            },
+            body: JSON.stringify({ 
+              batch_size: batch_size 
+            })
+          }
+        );
+        
+        console.log('Continuation vectorization started:', continueResponse.status);
+      } catch (continueError) {
+        console.error('Failed to start continuation vectorization:', continueError);
       }
     }
-
-    results.tests.push('✅ All tests completed');
 
     return new Response(JSON.stringify({ 
       success: true,
-      message: 'Debug tests completed',
-      results: results
+      processed: processedCount,
+      failed: failedCount,
+      remaining: remainingCount || 0,
+      isComplete: !remainingCount || remainingCount === 0,
+      nextBatch: remainingCount && remainingCount > 0
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
