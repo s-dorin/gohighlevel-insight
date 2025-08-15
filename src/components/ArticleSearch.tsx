@@ -11,11 +11,11 @@ interface SearchResult {
   id: string;
   title: string;
   url: string;
-  category: string;
+  category?: string;
   content_preview: string;
   similarity_score: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export const ArticleSearch = () => {
@@ -117,12 +117,12 @@ export const ArticleSearch = () => {
                     <CardTitle className="text-lg leading-6">
                       {result.title}
                     </CardTitle>
-                    <div className="flex items-center gap-2">
+                    {result.category && (
                       <Badge variant="secondary">{result.category}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        Similarity: {Math.round(result.similarity_score * 100)}%
-                      </span>
-                    </div>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      Similarity: {Math.round(result.similarity_score * 100)}%
+                    </span>
                   </div>
                   <Button
                     variant="outline"
@@ -138,9 +138,11 @@ export const ArticleSearch = () => {
                 <p className="text-sm text-muted-foreground line-clamp-3">
                   {result.content_preview}
                 </p>
-                <div className="mt-3 text-xs text-muted-foreground">
-                  Last updated: {new Date(result.updated_at).toLocaleDateString()}
-                </div>
+                {result.updated_at && (
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    Last updated: {new Date(result.updated_at).toLocaleDateString()}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

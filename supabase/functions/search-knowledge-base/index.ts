@@ -46,8 +46,7 @@ serve(async (req) => {
       body: JSON.stringify({
         vector: queryEmbedding,
         limit: limit,
-        with_payload: true,
-        score_threshold: 0.7 // Minimum similarity score
+        with_payload: true
       }),
     });
 
@@ -59,12 +58,14 @@ serve(async (req) => {
     const searchResults = await searchResponse.json();
     
     // Format results
-    const formattedResults = searchResults.result.map((result: any) => ({
+    const formattedResults = (searchResults.result || []).map((result: any) => ({
       id: result.id,
-      title: result.payload.title,
-      url: result.payload.url,
-      content_preview: result.payload.content.substring(0, 200) + '...',
-      similarity_score: result.score
+      title: result.payload?.title || 'Untitled',
+      url: result.payload?.url || '',
+      category: result.payload?.category,
+      content_preview: (result.payload?.content || '').slice(0, 200),
+      similarity_score: result.score,
+      updated_at: result.payload?.updated_at
     }));
 
     console.log(`Found ${formattedResults.length} relevant articles`);
