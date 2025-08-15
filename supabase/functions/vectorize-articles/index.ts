@@ -25,10 +25,22 @@ serve(async (req) => {
     const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
+    console.log('🔍 Debug environment variables:');
+    console.log('QDRANT_API_KEY exists:', !!QDRANT_API_KEY);
+    console.log('QDRANT_API_KEY length:', QDRANT_API_KEY?.length || 0);
+    console.log('OPENAI_API_KEY exists:', !!OPENAI_API_KEY);
+    console.log('OPENAI_API_KEY length:', OPENAI_API_KEY?.length || 0);
+    console.log('OPENAI_API_KEY value preview:', OPENAI_API_KEY?.substring(0, 10) || 'null/undefined');
+    
     const results = {
       qdrant_url: QDRANT_URL,
       qdrant_key_available: !!QDRANT_API_KEY,
       openai_key_available: !!OPENAI_API_KEY,
+      debug: {
+        qdrant_length: QDRANT_API_KEY?.length || 0,
+        openai_length: OPENAI_API_KEY?.length || 0,
+        openai_preview: OPENAI_API_KEY?.substring(0, 10) || 'null/undefined'
+      },
       tests: []
     };
 
@@ -39,8 +51,8 @@ serve(async (req) => {
     const envVars = Object.keys(Deno.env.toObject());
     results.tests.push(`🔍 Available env vars: ${envVars.filter(k => k.includes('API')).join(', ')}`);
     
-    if (!QDRANT_API_KEY) {
-      results.tests.push('❌ QDRANT_API_KEY missing');
+    if (!QDRANT_API_KEY || QDRANT_API_KEY.length === 0) {
+      results.tests.push('❌ QDRANT_API_KEY missing or empty');
       return new Response(JSON.stringify({ 
         success: false,
         error: 'QDRANT_API_KEY not configured',
@@ -51,8 +63,8 @@ serve(async (req) => {
       });
     }
     
-    if (!OPENAI_API_KEY) {
-      results.tests.push('❌ OPENAI_API_KEY missing from environment');
+    if (!OPENAI_API_KEY || OPENAI_API_KEY.length === 0) {
+      results.tests.push(`❌ OPENAI_API_KEY missing or empty (length: ${OPENAI_API_KEY?.length || 0})`);
       return new Response(JSON.stringify({ 
         success: false,
         error: 'OPENAI_API_KEY not configured',
@@ -64,6 +76,7 @@ serve(async (req) => {
     }
     
     results.tests.push(`✅ OPENAI_API_KEY found (${OPENAI_API_KEY.substring(0, 8)}...)`);
+    results.tests.push(`✅ QDRANT_API_KEY found (${QDRANT_API_KEY.substring(0, 8)}...)`);
 
     // Test 2: Qdrant connection
     results.tests.push('🔍 Testing Qdrant...');
