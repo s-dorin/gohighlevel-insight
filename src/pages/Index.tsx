@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { KnowledgeBaseManager } from '@/components/KnowledgeBaseManager';
 import { ArticleSearch } from '@/components/ArticleSearch';
 import { JobStatus } from '@/components/JobStatus';
+import { ScheduleManager } from '@/components/ScheduleManager';
 
 const Index = () => {
   const { toast } = useToast();
@@ -44,6 +45,16 @@ const Index = () => {
               Manage Database
             </button>
             <button
+              onClick={() => setActiveTab('schedule')}
+              className={`px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'schedule'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Auto Schedule
+            </button>
+            <button
               onClick={() => setActiveTab('status')}
               className={`px-4 py-2 rounded-md transition-colors ${
                 activeTab === 'status'
@@ -59,6 +70,7 @@ const Index = () => {
         <div className="max-w-6xl mx-auto">
           {activeTab === 'search' && <ArticleSearch />}
           {activeTab === 'manage' && <KnowledgeBaseManager />}
+          {activeTab === 'schedule' && <ScheduleManager />}
           {activeTab === 'status' && <JobStatus />}
         </div>
       </div>

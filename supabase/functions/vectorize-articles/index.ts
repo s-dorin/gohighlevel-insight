@@ -20,7 +20,12 @@ serve(async (req) => {
   }
 
   try {
-    const { batch_size = 20 } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const { 
+      batch_size = 50, 
+      auto_scheduled = false,
+      force_all = false 
+    } = body;
     console.log('🚀 Starting vectorization process with batch size:', batch_size);
     
     // Debug all environment variables
@@ -193,6 +198,28 @@ serve(async (req) => {
       .not('content', 'is', null);
 
     console.log(`Batch completed. Processed: ${processedCount}, Failed: ${failedCount}, Remaining: ${remainingCount || 0}`);
+
+    // Update schedule tracking if this was an auto-scheduled run
+    if (auto_scheduled) {
+      try {
+        await supabase
+          .from('vectorization_schedules')
+          .update({
+            last_run_at: new Date().toISOString(),
+            articles_processed: processedCount,
+            articles_failed: failedCount,
+            status: remainingCount && remainingCount > 0 ? 'running' : 'completed',
+            next_run_at: remainingCount && remainingCount > 0 
+              ? new Date().toISOString() 
+              : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // Next week
+          })
+          .eq('schedule_name', 'weekly-auto-vectorization');
+        
+        console.log('Updated schedule tracking');
+      } catch (scheduleError) {
+        console.error('Failed to update schedule tracking:', scheduleError);
+      }
+    }
 
     // Auto-continue if there are more articles to process
     if (remainingCount && remainingCount > 0) {
