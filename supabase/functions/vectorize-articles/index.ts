@@ -25,8 +25,20 @@ serve(async (req) => {
     const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
-    if (!QDRANT_API_KEY || !OPENAI_API_KEY) {
-      throw new Error('Missing required API keys');
+    console.log('Debug - API keys status:');
+    console.log('QDRANT_API_KEY exists:', !!QDRANT_API_KEY);
+    console.log('OPENAI_API_KEY exists:', !!OPENAI_API_KEY);
+    console.log('QDRANT_API_KEY length:', QDRANT_API_KEY?.length || 0);
+    console.log('OPENAI_API_KEY length:', OPENAI_API_KEY?.length || 0);
+    
+    if (!QDRANT_API_KEY) {
+      console.error('QDRANT_API_KEY is missing from environment');
+      throw new Error('QDRANT_API_KEY not found in environment variables');
+    }
+    
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY is missing from environment');
+      throw new Error('OPENAI_API_KEY not found in environment variables');
     }
 
     // Ensure knowledge_base collection exists in Qdrant
