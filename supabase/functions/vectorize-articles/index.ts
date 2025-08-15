@@ -99,12 +99,26 @@ serve(async (req) => {
       
       try {
         console.log(`Processing article ${i + 1}/${maxArticles}: ${article.title}`);
+        console.log(`Article ID: ${article.id}`);
+        console.log(`Article content length: ${article.content ? article.content.length : 0}`);
+        
+        if (!article.content || article.content.trim().length === 0) {
+          console.log(`⚠️ Skipping article with no content: ${article.title}`);
+          failedCount++;
+          continue;
+        }
+        
         await vectorizeAndStoreArticle(article);
         processedCount++;
         console.log(`✅ Successfully vectorized: ${article.title}`);
       } catch (error) {
         failedCount++;
         console.error(`❌ Failed to vectorize article ${article.id}:`, error);
+        console.error(`Error details:`, {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
       }
 
       // Small delay between articles to avoid rate limiting
