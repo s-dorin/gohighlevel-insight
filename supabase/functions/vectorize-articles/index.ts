@@ -94,7 +94,7 @@ serve(async (req) => {
       .from('kb_articles')
       .select('id, title, content')
       .is('last_indexed_at', null)
-      .limit(1);
+      .limit(10);
 
     if (articlesError) {
       results.tests.push(`❌ Database error: ${articlesError.message}`);
@@ -133,6 +133,71 @@ serve(async (req) => {
         } catch (openaiError) {
           results.tests.push(`❌ OpenAI connection failed: ${openaiError.message}`);
         }
+      }
+    }
+
+    // Now do actual vectorization
+    results.tests.push('🚀 Starting vectorization...');
+    
+    let processedCount = 0;
+    for (const article of articles || []) {
+      if (!article.content) continue;
+      
+      try {
+        // Generate embedding
+        const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'text-embedding-3-small',
+            input: article.content,
+          }),
+        });
+
+        if (!embeddingResponse.ok) {
+          throw new Error(`OpenAI error: ${embeddingResponse.status}`);
+        }
+
+        const embeddingResult = await embeddingResponse.json();
+        const embedding = embeddingResult.data[0].embedding;
+
+        // Store in Qdrant
+        const qdrantResponse = await fetch(`${QDRANT_URL}/collections/knowledge_base/points`, {
+          method: 'PUT',
+          headers: {
+            'Api-Key': QDRANT_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            points: [{
+              id: article.id,
+              vector: embedding,
+              payload: {
+                title: article.title,
+                content: article.content,
+              }
+            }]
+          }),
+        });
+
+        if (!qdrantResponse.ok) {
+          throw new Error(`Qdrant error: ${qdrantResponse.status}`);
+        }
+
+        // Update database
+        await supabase
+          .from('kb_articles')
+          .update({ last_indexed_at: new Date().toISOString() })
+          .eq('id', article.id);
+
+        processedCount++;
+        results.tests.push(`✅ Processed: ${article.title}`);
+
+      } catch (error) {
+        results.tests.push(`❌ Failed: ${article.title} - ${error.message}`);
       }
     }
 
