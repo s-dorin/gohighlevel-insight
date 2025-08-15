@@ -100,7 +100,7 @@ export const KnowledgeBaseManager = () => {
               .from('scraping_jobs')
               .select('status, completed_at')
               .eq('id', data.jobId)
-              .single();
+              .maybeSingle();
             
             if (jobData?.status === 'completed' && jobData.completed_at) {
               toast({
@@ -138,6 +138,7 @@ export const KnowledgeBaseManager = () => {
             }
           } catch (error) {
             console.error('Error checking job status:', error);
+            setTimeout(checkAndVectorize, 5000);
           }
         };
         
