@@ -20,10 +20,16 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🚀 Starting vectorization process');
-    console.log('Qdrant URL:', QDRANT_URL);
-    console.log('Qdrant API Key available:', !!QDRANT_API_KEY);
-    console.log('OpenAI API Key available:', !!Deno.env.get('OPENAI_API_KEY'));
+    const debugSteps = [];
+    
+    debugSteps.push('🚀 Function started');
+    console.log('🚀 Function started');
+    
+    debugSteps.push(`Qdrant URL: ${QDRANT_URL}`);
+    debugSteps.push(`Qdrant API Key available: ${!!QDRANT_API_KEY}`);
+    debugSteps.push(`OpenAI API Key available: ${!!Deno.env.get('OPENAI_API_KEY')}`);
+    
+    console.log('Environment check completed');
     
     if (!QDRANT_API_KEY) {
       throw new Error('QDRANT_API_KEY is not configured');
@@ -33,8 +39,12 @@ serve(async (req) => {
       throw new Error('OPENAI_API_KEY is not configured');
     }
 
-    // Test Qdrant connection first
+    debugSteps.push('✅ API keys verified');
+    
+    // Test Qdrant connection
+    debugSteps.push('🔍 Testing Qdrant connection...');
     console.log('🔍 Testing Qdrant connection...');
+    
     try {
       const testResponse = await fetch(`${QDRANT_URL}/collections`, {
         headers: {
@@ -43,97 +53,92 @@ serve(async (req) => {
         },
       });
       
+      debugSteps.push(`Qdrant response status: ${testResponse.status}`);
+      
       if (testResponse.ok) {
         const collections = await testResponse.json();
-        console.log('✅ Qdrant is accessible');
-        console.log('Available collections:', collections);
+        debugSteps.push('✅ Qdrant is accessible');
+        debugSteps.push(`Collections found: ${JSON.stringify(collections)}`);
       } else {
         const error = await testResponse.text();
-        console.error('❌ Qdrant connection failed:', testResponse.status, error);
+        debugSteps.push(`❌ Qdrant error: ${testResponse.status} ${error}`);
         throw new Error(`Qdrant not accessible: ${testResponse.status} ${error}`);
       }
     } catch (connectionError) {
-      console.error('❌ Failed to connect to Qdrant:', connectionError);
-      throw new Error(`Cannot connect to Qdrant: ${connectionError.message}`);
+      debugSteps.push(`❌ Qdrant connection failed: ${connectionError.message}`);
+      throw connectionError;
     }
 
-    // Get articles that haven't been indexed yet
-    console.log('📚 Fetching unindexed articles...');
+    // Get articles
+    debugSteps.push('📚 Fetching articles...');
+    console.log('📚 Fetching articles...');
+    
     const { data: articles, error: articlesError } = await supabase
       .from('kb_articles')
-      .select('*')
+      .select('id, title, content, last_indexed_at')
       .is('last_indexed_at', null)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(3); // Start with just 3 articles for testing
 
     if (articlesError) {
-      console.error('Error fetching articles:', articlesError);
+      debugSteps.push(`❌ Articles fetch error: ${articlesError.message}`);
       throw articlesError;
     }
 
+    debugSteps.push(`Found ${articles?.length || 0} articles to process`);
+    
     if (!articles || articles.length === 0) {
-      console.log('No articles need vectorization');
+      debugSteps.push('No articles need vectorization');
       return new Response(JSON.stringify({ 
         message: 'No articles need vectorization',
-        processed: 0 
+        processed: 0,
+        debug_steps: debugSteps
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`Found ${articles.length} articles to vectorize`);
-
-    // Ensure Qdrant collection exists
-    console.log('🔍 Checking Qdrant collection...');
-    await ensureQdrantCollection();
-
-    let processedCount = 0;
-    let failedCount = 0;
-
-    // Process articles in batches (smaller batch size to avoid timeout)
-    const maxArticles = Math.min(articles.length, 10); // Limit to max 10 articles per run
+    // Test with just one article
+    const testArticle = articles[0];
+    debugSteps.push(`Testing with article: ${testArticle.title}`);
+    debugSteps.push(`Article content length: ${testArticle.content?.length || 0}`);
     
-    console.log(`Processing first ${maxArticles} articles out of ${articles.length} total`);
-    
-    for (let i = 0; i < maxArticles; i++) {
-      const article = articles[i];
-      
-      try {
-        console.log(`Processing article ${i + 1}/${maxArticles}: ${article.title}`);
-        console.log(`Article ID: ${article.id}`);
-        console.log(`Article content length: ${article.content ? article.content.length : 0}`);
-        
-        if (!article.content || article.content.trim().length === 0) {
-          console.log(`⚠️ Skipping article with no content: ${article.title}`);
-          failedCount++;
-          continue;
-        }
-        
-        await vectorizeAndStoreArticle(article);
-        processedCount++;
-        console.log(`✅ Successfully vectorized: ${article.title}`);
-      } catch (error) {
-        failedCount++;
-        console.error(`❌ Failed to vectorize article ${article.id}:`, error);
-        console.error(`Error details:`, {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        });
-      }
-
-      // Small delay between articles to avoid rate limiting
-      if (i < maxArticles - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+    if (!testArticle.content || testArticle.content.trim().length === 0) {
+      debugSteps.push('❌ Test article has no content');
+      return new Response(JSON.stringify({ 
+        message: 'Test article has no content',
+        processed: 0,
+        failed: 1,
+        debug_steps: debugSteps
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log(`Vectorization completed. Processed: ${processedCount}, Failed: ${failedCount}`);
+    // Test OpenAI embedding
+    debugSteps.push('🤖 Testing OpenAI embedding...');
+    const testText = `${testArticle.title}\n\n${testArticle.content.substring(0, 1000)}`;
+    
+    try {
+      const embedding = await getEmbedding(testText);
+      debugSteps.push(`✅ Got embedding with ${embedding.length} dimensions`);
+    } catch (embeddingError) {
+      debugSteps.push(`❌ Embedding error: ${embeddingError.message}`);
+      throw embeddingError;
+    }
 
+    debugSteps.push('✅ All tests passed!');
+    
     return new Response(JSON.stringify({ 
-      success: true,
-      processed: processedCount,
-      failed: failedCount,
-      total: articles.length
+      message: 'Debug completed - all systems working',
+      processed: 0,
+      failed: 0,
+      debug_steps: debugSteps,
+      test_article: {
+        id: testArticle.id,
+        title: testArticle.title,
+        content_length: testArticle.content.length
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -141,7 +146,8 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in vectorize-articles function:', error);
     return new Response(JSON.stringify({ 
-      error: error.message 
+      error: error.message,
+      debug_info: 'Function failed during execution'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
