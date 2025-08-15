@@ -13,6 +13,7 @@ interface Article {
   category: string;
   last_scraped_at: string;
   last_indexed_at: string;
+  vector_id: string | null;
   created_at: string;
 }
 
@@ -51,18 +52,19 @@ export const KnowledgeBaseManager = () => {
       // Get accurate stats for all articles
       const { data: totalStats, error: totalError } = await supabase
         .from('kb_articles')
-        .select('id, last_indexed_at');
+        .select('id, content, vector_id');
 
       if (totalError) {
         throw totalError;
       }
 
-      // Calculate accurate stats
+      // Calculate accurate stats - only count articles with content as indexable
       const total = totalStats?.length || 0;
-      const indexed = totalStats?.filter(article => article.last_indexed_at).length || 0;
-      const pending = total - indexed;
+      const indexable = totalStats?.filter(article => article.content).length || 0;
+      const indexed = totalStats?.filter(article => article.vector_id).length || 0;
+      const pending = indexable - indexed;
       
-      setStats({ total, indexed, pending });
+      setStats({ total: indexable, indexed, pending });
     } catch (error) {
       console.error('Error loading articles:', error);
       toast({
@@ -87,8 +89,61 @@ export const KnowledgeBaseManager = () => {
       if (data.success) {
         toast({
           title: 'Scraping Started',
-          description: `Processing ${data.total} articles. Job ID: ${data.jobId}`,
+          description: `Processing ${data.total} articles. Job ID: ${data.jobId}. Auto-indexing will start after scraping.`,
         });
+        
+        // Auto-start vectorization after scraping completes
+        const checkAndVectorize = async () => {
+          try {
+            // Wait for scraping to complete by checking job status
+            const { data: jobData } = await supabase
+              .from('scraping_jobs')
+              .select('status, completed_at')
+              .eq('id', data.jobId)
+              .single();
+            
+            if (jobData?.status === 'completed' && jobData.completed_at) {
+              toast({
+                title: 'Scraping Complete',
+                description: 'Starting automatic vectorization...',
+              });
+              
+              // Start vectorization
+              const { data: vectorData, error: vectorError } = await supabase.functions.invoke('vectorize-articles');
+              
+              if (vectorError) {
+                console.error('Auto-vectorization failed:', vectorError);
+                toast({
+                  title: 'Auto-Vectorization Failed',
+                  description: 'Please start vectorization manually.',
+                  variant: 'destructive',
+                });
+              } else if (vectorData.success || vectorData.message) {
+                toast({
+                  title: 'Auto-Vectorization Started',
+                  description: `Processing articles in background...`,
+                });
+              }
+              
+              loadArticles();
+            } else if (jobData?.status === 'failed') {
+              toast({
+                title: 'Scraping Failed',
+                description: 'Auto-vectorization skipped.',
+                variant: 'destructive',
+              });
+            } else {
+              // Still running, check again
+              setTimeout(checkAndVectorize, 5000);
+            }
+          } catch (error) {
+            console.error('Error checking job status:', error);
+          }
+        };
+        
+        // Start checking after initial delay
+        setTimeout(checkAndVectorize, 10000);
+        
         // Reload articles after a delay
         setTimeout(() => {
           loadArticles();
@@ -147,7 +202,7 @@ export const KnowledgeBaseManager = () => {
             <Database className="h-8 w-8 text-primary mr-3" />
             <div>
               <p className="text-2xl font-bold">{stats.total}</p>
-              <p className="text-xs text-muted-foreground">Total Articles</p>
+              <p className="text-xs text-muted-foreground">Indexable Articles</p>
             </div>
           </CardContent>
         </Card>
@@ -248,10 +303,10 @@ export const KnowledgeBaseManager = () => {
                         {article.category}
                       </Badge>
                       <Badge 
-                        variant={article.last_indexed_at ? "default" : "secondary"}
+                        variant={article.vector_id ? "default" : "secondary"}
                         className="text-xs"
                       >
-                        {article.last_indexed_at ? "Indexed" : "Pending"}
+                        {article.vector_id ? "Indexed" : "Pending"}
                       </Badge>
                     </div>
                   </div>
