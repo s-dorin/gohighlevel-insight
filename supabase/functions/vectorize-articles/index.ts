@@ -33,6 +33,30 @@ serve(async (req) => {
       throw new Error('OPENAI_API_KEY is not configured');
     }
 
+    // Test Qdrant connection first
+    console.log('🔍 Testing Qdrant connection...');
+    try {
+      const testResponse = await fetch(`${QDRANT_URL}/collections`, {
+        headers: {
+          'Api-Key': QDRANT_API_KEY!,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (testResponse.ok) {
+        const collections = await testResponse.json();
+        console.log('✅ Qdrant is accessible');
+        console.log('Available collections:', collections);
+      } else {
+        const error = await testResponse.text();
+        console.error('❌ Qdrant connection failed:', testResponse.status, error);
+        throw new Error(`Qdrant not accessible: ${testResponse.status} ${error}`);
+      }
+    } catch (connectionError) {
+      console.error('❌ Failed to connect to Qdrant:', connectionError);
+      throw new Error(`Cannot connect to Qdrant: ${connectionError.message}`);
+    }
+
     // Get articles that haven't been indexed yet
     console.log('📚 Fetching unindexed articles...');
     const { data: articles, error: articlesError } = await supabase
