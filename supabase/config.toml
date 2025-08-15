@@ -42,3 +42,6 @@ verify_jwt = false
 
 [functions.search-knowledge-base]
 verify_jwt = false
+
+[functions.qdrant-stats]
+verify_jwt = false

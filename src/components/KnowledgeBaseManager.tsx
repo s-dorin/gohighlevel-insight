@@ -4,7 +4,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Download, RefreshCw, Database, Zap } from 'lucide-react';
+import { Loader2, Download, RefreshCw, Database, Zap, HardDrive } from 'lucide-react';
 
 interface Article {
   id: string;
@@ -28,6 +28,7 @@ export const KnowledgeBaseManager = () => {
     indexed: 0,
     pending: 0
   });
+  const [qdrantPoints, setQdrantPoints] = useState<number | null>(null);
 
   useEffect(() => {
     loadArticles();
@@ -65,6 +66,20 @@ export const KnowledgeBaseManager = () => {
       const pending = indexable - indexed;
       
       setStats({ total: indexable, indexed, pending });
+
+      // Fetch Qdrant points count
+      try {
+        const { data: qData, error: qError } = await supabase.functions.invoke('qdrant-stats');
+        if (qError) throw qError;
+        if (qData?.success) {
+          setQdrantPoints(qData.points_count ?? null);
+        } else {
+          setQdrantPoints(null);
+        }
+      } catch (e) {
+        console.error('Failed to fetch Qdrant stats:', e);
+        setQdrantPoints(null);
+      }
     } catch (error) {
       console.error('Error loading articles:', error);
       toast({
@@ -197,7 +212,7 @@ export const KnowledgeBaseManager = () => {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="flex items-center p-6">
             <Database className="h-8 w-8 text-primary mr-3" />
@@ -224,6 +239,16 @@ export const KnowledgeBaseManager = () => {
             <div>
               <p className="text-2xl font-bold">{stats.pending}</p>
               <p className="text-xs text-muted-foreground">Pending Indexing</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex items-center p-6">
+            <HardDrive className="h-8 w-8 text-purple-500 mr-3" />
+            <div>
+              <p className="text-2xl font-bold">{qdrantPoints ?? '—'}</p>
+              <p className="text-xs text-muted-foreground">Qdrant Points</p>
             </div>
           </CardContent>
         </Card>

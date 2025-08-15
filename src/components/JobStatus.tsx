@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
 
 interface ScrapingJob {
   id: string;
@@ -123,6 +124,21 @@ export const JobStatus = () => {
     return `${Math.round(duration / 3600)}h`;
   };
 
+  const handleDelete = async (jobId: string) => {
+    try {
+      const { error } = await supabase
+        .from('scraping_jobs')
+        .delete()
+        .eq('id', jobId);
+      if (error) throw error;
+      toast({ title: 'Job deleted', description: `Job ${jobId.slice(0,8)} removed` });
+      loadJobs();
+    } catch (err: any) {
+      console.error('Failed to delete job:', err);
+      toast({ title: 'Delete failed', description: err.message || 'Could not delete job', variant: 'destructive' });
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -150,8 +166,13 @@ export const JobStatus = () => {
                       <span className="font-medium">Job {job.id.slice(0, 8)}</span>
                       {getStatusBadge(job.status)}
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {new Date(job.created_at).toLocaleString()}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{new Date(job.created_at).toLocaleString()}</span>
+                      {job.status === 'completed' && (
+                        <Button variant="outline" size="sm" onClick={() => handleDelete(job.id)}>
+                          <Trash2 className="h-4 w-4 mr-1" /> Delete
+                        </Button>
+                      )}
                     </div>
                   </div>
 
