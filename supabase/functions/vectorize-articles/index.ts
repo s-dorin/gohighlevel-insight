@@ -23,6 +23,11 @@ serve(async (req) => {
     const { batch_size = 20 } = await req.json().catch(() => ({}));
     console.log('🚀 Starting vectorization process with batch size:', batch_size);
     
+    // Debug all environment variables
+    const allEnvVars = Deno.env.toObject();
+    console.log('All available environment variables:', Object.keys(allEnvVars));
+    console.log('Environment variables containing API:', Object.keys(allEnvVars).filter(key => key.includes('API')));
+    
     const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
@@ -39,6 +44,7 @@ serve(async (req) => {
     
     if (!OPENAI_API_KEY) {
       console.error('OPENAI_API_KEY is missing from environment');
+      console.error('Available env vars:', Object.keys(allEnvVars).join(', '));
       throw new Error('OPENAI_API_KEY not found in environment variables');
     }
 
