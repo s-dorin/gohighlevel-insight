@@ -12,7 +12,6 @@ const supabase = createClient(
 );
 
 const QDRANT_URL = 'https://qdrant.multiseco.eu';
-const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -20,12 +19,16 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🚀 Starting debug tests');
+    console.log('🚀 Starting vectorization process');
+    
+    // Get secrets fresh from environment
+    const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
     const results = {
       qdrant_url: QDRANT_URL,
       qdrant_key_available: !!QDRANT_API_KEY,
-      openai_key_available: !!Deno.env.get('OPENAI_API_KEY'),
+      openai_key_available: !!OPENAI_API_KEY,
       tests: []
     };
 
@@ -38,16 +41,29 @@ serve(async (req) => {
     
     if (!QDRANT_API_KEY) {
       results.tests.push('❌ QDRANT_API_KEY missing');
-      throw new Error('QDRANT_API_KEY not configured');
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'QDRANT_API_KEY not configured',
+        results: results
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
     
-    const openaiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiKey) {
+    if (!OPENAI_API_KEY) {
       results.tests.push('❌ OPENAI_API_KEY missing from environment');
-      throw new Error('OPENAI_API_KEY not configured');
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'OPENAI_API_KEY not configured',
+        results: results
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
     
-    results.tests.push(`✅ OPENAI_API_KEY found (${openaiKey.substring(0, 8)}...)`);
+    results.tests.push(`✅ OPENAI_API_KEY found (${OPENAI_API_KEY.substring(0, 8)}...)`);
 
     // Test 2: Qdrant connection
     results.tests.push('🔍 Testing Qdrant...');
@@ -98,7 +114,7 @@ serve(async (req) => {
           const openaiResponse = await fetch('https://api.openai.com/v1/embeddings', {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+              'Authorization': `Bearer ${OPENAI_API_KEY}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -131,7 +147,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Error in debug function:', error);
+    console.error('Error in vectorize function:', error);
     return new Response(JSON.stringify({ 
       success: false,
       error: error.message,
