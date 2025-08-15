@@ -17,47 +17,81 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting knowledge base scraping process');
+    const { resume_job_id, batch_size = 20 } = await req.json().catch(() => ({}));
+    console.log('Starting knowledge base scraping process', { resume_job_id, batch_size });
     
-    // Create a new scraping job
-    const { data: job, error: jobError } = await supabase
-      .from('scraping_jobs')
-      .insert({ status: 'running', started_at: new Date().toISOString() })
-      .select()
-      .single();
+    let job;
+    let discoveredUrls: string[] = [];
+    let startIndex = 0;
 
-    if (jobError) {
-      console.error('Error creating scraping job:', jobError);
-      throw jobError;
+    if (resume_job_id) {
+      // Resume existing job
+      const { data: existingJob, error: jobError } = await supabase
+        .from('scraping_jobs')
+        .select('*')
+        .eq('id', resume_job_id)
+        .single();
+
+      if (jobError || !existingJob) {
+        throw new Error(`Job ${resume_job_id} not found`);
+      }
+
+      job = existingJob;
+      startIndex = job.processed_urls || 0;
+      console.log(`Resuming job ${job.id} from index ${startIndex}`);
+
+      // Re-discover URLs (we need the full list to continue)
+      const baseUrl = 'https://help.gohighlevel.com/support/solutions';
+      discoveredUrls = await discoverArticleUrls(baseUrl);
+    } else {
+      // Create a new scraping job
+      const { data: newJob, error: jobError } = await supabase
+        .from('scraping_jobs')
+        .insert({ status: 'running', started_at: new Date().toISOString() })
+        .select()
+        .single();
+
+      if (jobError) {
+        console.error('Error creating scraping job:', jobError);
+        throw jobError;
+      }
+
+      job = newJob;
+      console.log(`Created scraping job: ${job.id}`);
+
+      // Discover all solution articles from the main page
+      const baseUrl = 'https://help.gohighlevel.com/support/solutions';
+      discoveredUrls = await discoverArticleUrls(baseUrl);
+      
+      console.log(`Discovered ${discoveredUrls.length} article URLs`);
+
+      // Update job with total URLs
+      await supabase
+        .from('scraping_jobs')
+        .update({ total_urls: discoveredUrls.length })
+        .eq('id', job.id);
     }
 
-    console.log(`Created scraping job: ${job.id}`);
+    let processedCount = job.processed_urls || 0;
+    let failedCount = job.failed_urls || 0;
 
-    // Discover all solution articles from the main page
-    const baseUrl = 'https://help.gohighlevel.com/support/solutions';
-    const discoveredUrls = await discoverArticleUrls(baseUrl);
-    
-    console.log(`Discovered ${discoveredUrls.length} article URLs`);
+    // Process only a limited batch to avoid timeout
+    const maxBatchArticles = Math.min(batch_size, 50); // Maximum 50 articles per call
+    const endIndex = Math.min(startIndex + maxBatchArticles, discoveredUrls.length);
+    const currentBatch = discoveredUrls.slice(startIndex, endIndex);
 
-    // Update job with total URLs
-    await supabase
-      .from('scraping_jobs')
-      .update({ total_urls: discoveredUrls.length })
-      .eq('id', job.id);
+    console.log(`Processing articles ${startIndex} to ${endIndex} of ${discoveredUrls.length}`);
 
-    let processedCount = 0;
-    let failedCount = 0;
-
-    // Process articles in batches to avoid overwhelming the server
-    const batchSize = 5;
-    for (let i = 0; i < discoveredUrls.length; i += batchSize) {
-      const batch = discoveredUrls.slice(i, i + batchSize);
+    // Process articles in smaller batches
+    const processingBatchSize = 3;
+    for (let i = 0; i < currentBatch.length; i += processingBatchSize) {
+      const batch = currentBatch.slice(i, i + processingBatchSize);
       
       const batchPromises = batch.map(async (url) => {
         try {
           await scrapeAndStoreArticle(url);
           processedCount++;
-          console.log(`Processed article: ${url}`);
+          console.log(`Processed article: ${url} (${processedCount}/${discoveredUrls.length})`);
         } catch (error) {
           failedCount++;
           console.error(`Failed to process article ${url}:`, error);
@@ -66,7 +100,7 @@ serve(async (req) => {
 
       await Promise.all(batchPromises);
 
-      // Update progress
+      // Update progress after each small batch
       await supabase
         .from('scraping_jobs')
         .update({ 
@@ -76,28 +110,58 @@ serve(async (req) => {
         .eq('id', job.id);
 
       // Small delay between batches
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    // Complete the job
-    await supabase
-      .from('scraping_jobs')
-      .update({ 
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        processed_urls: processedCount,
-        failed_urls: failedCount
-      })
-      .eq('id', job.id);
+    const isComplete = processedCount + failedCount >= discoveredUrls.length;
 
-    console.log(`Scraping completed. Processed: ${processedCount}, Failed: ${failedCount}`);
+    if (isComplete) {
+      // Complete the job
+      await supabase
+        .from('scraping_jobs')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          processed_urls: processedCount,
+          failed_urls: failedCount
+        })
+        .eq('id', job.id);
+
+      console.log(`Scraping completed. Processed: ${processedCount}, Failed: ${failedCount}`);
+    } else {
+      console.log(`Batch completed. Processed: ${processedCount}/${discoveredUrls.length}, continuing...`);
+      
+      // Auto-continue by calling self
+      try {
+        const continueResponse = await fetch(
+          `${Deno.env.get('SUPABASE_URL')}/functions/v1/scrape-knowledge-base`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
+            },
+            body: JSON.stringify({ 
+              resume_job_id: job.id,
+              batch_size: batch_size 
+            })
+          }
+        );
+        
+        console.log('Continuation job started:', continueResponse.status);
+      } catch (continueError) {
+        console.error('Failed to start continuation job:', continueError);
+      }
+    }
 
     return new Response(JSON.stringify({ 
       success: true,
       jobId: job.id,
       processed: processedCount,
       failed: failedCount,
-      total: discoveredUrls.length
+      total: discoveredUrls.length,
+      isComplete,
+      nextBatch: !isComplete
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
