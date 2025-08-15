@@ -79,7 +79,7 @@ serve(async (req) => {
     results.tests.push(`✅ OPENAI_API_KEY found (${OPENAI_API_KEY.substring(0, 8)}...)`);
     results.tests.push(`✅ QDRANT_API_KEY found (${QDRANT_API_KEY.substring(0, 8)}...)`);
 
-    // Test 2: Qdrant connection
+    // Test 2: Qdrant connection and collection setup
     results.tests.push('🔍 Testing Qdrant...');
     try {
       const qdrantResponse = await fetch(`${QDRANT_URL}/collections`, {
@@ -92,6 +92,37 @@ serve(async (req) => {
       if (qdrantResponse.ok) {
         const collections = await qdrantResponse.json();
         results.tests.push(`✅ Qdrant accessible - ${collections.result?.collections?.length || 0} collections`);
+        
+        // Check if knowledge_base collection exists
+        const hasKnowledgeBase = collections.result?.collections?.some(col => col.name === 'knowledge_base');
+        
+        if (!hasKnowledgeBase) {
+          results.tests.push('🔧 Creating knowledge_base collection...');
+          // Create the knowledge_base collection
+          const createResponse = await fetch(`${QDRANT_URL}/collections/knowledge_base`, {
+            method: 'PUT',
+            headers: {
+              'Api-Key': QDRANT_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              vectors: {
+                size: 1536, // OpenAI text-embedding-3-small dimension
+                distance: 'Cosine'
+              }
+            }),
+          });
+          
+          if (createResponse.ok) {
+            results.tests.push('✅ Created knowledge_base collection');
+          } else {
+            const error = await createResponse.text();
+            results.tests.push(`❌ Failed to create collection: ${createResponse.status} ${error}`);
+            throw new Error(`Failed to create collection: ${createResponse.status}`);
+          }
+        } else {
+          results.tests.push('✅ knowledge_base collection exists');
+        }
       } else {
         const error = await qdrantResponse.text();
         results.tests.push(`❌ Qdrant error: ${qdrantResponse.status} ${error}`);
