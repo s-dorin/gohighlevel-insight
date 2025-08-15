@@ -24,7 +24,7 @@ serve(async (req) => {
     // Get secrets fresh from environment
     const QDRANT_API_KEY = Deno.env.get('QDRANT_API_KEY');
     // TEMPORARY: Add your OpenAI API key here for testing
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || 'PASTE_YOUR_OPENAI_KEY_HERE';
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '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';
     
     console.log('🔍 Debug environment variables:');
     console.log('QDRANT_API_KEY exists:', !!QDRANT_API_KEY);
