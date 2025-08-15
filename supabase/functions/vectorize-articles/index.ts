@@ -157,16 +157,31 @@ async function ensureQdrantCollection(): Promise<void> {
 
 async function vectorizeAndStoreArticle(article: any): Promise<void> {
   try {
+    console.log(`Starting vectorization for article: ${article.id}`);
+    console.log(`Article title: ${article.title}`);
+    console.log(`Article has content: ${!!article.content}`);
+    console.log(`Content length: ${article.content ? article.content.length : 0}`);
+    
+    // Check if article has valid content
+    if (!article.content || article.content.trim().length === 0) {
+      throw new Error('Article has no content to vectorize');
+    }
+    
     // Create text for embedding (title + content)
     const textToEmbed = `${article.title}\n\n${article.content}`;
+    console.log(`Text to embed length: ${textToEmbed.length}`);
     
     // Get embedding from OpenAI (we'll need to add OpenAI API key)
+    console.log('Generating embedding...');
     const embedding = await getEmbedding(textToEmbed);
+    console.log(`Generated embedding with ${embedding.length} dimensions`);
     
     // Generate a unique vector ID
     const vectorId = `article_${article.id}`;
+    console.log(`Vector ID: ${vectorId}`);
     
     // Store in Qdrant
+    console.log('Storing in Qdrant...');
     const qdrantResponse = await fetch(`${QDRANT_URL}/collections/highlevel_kb/points`, {
       method: 'PUT',
       headers: {
@@ -192,12 +207,19 @@ async function vectorizeAndStoreArticle(article: any): Promise<void> {
       }),
     });
 
+    console.log(`Qdrant response status: ${qdrantResponse.status}`);
+    
     if (!qdrantResponse.ok) {
       const error = await qdrantResponse.text();
+      console.error(`Qdrant error response: ${error}`);
       throw new Error(`Failed to store in Qdrant: ${error}`);
     }
+    
+    const qdrantResult = await qdrantResponse.text();
+    console.log(`Qdrant success response: ${qdrantResult}`);
 
     // Update article with vector_id and last_indexed_at
+    console.log('Updating article in database...');
     const { error: updateError } = await supabase
       .from('kb_articles')
       .update({
@@ -210,9 +232,11 @@ async function vectorizeAndStoreArticle(article: any): Promise<void> {
       console.error('Error updating article:', updateError);
       throw updateError;
     }
+    
+    console.log(`✅ Successfully completed vectorization for article: ${article.id}`);
 
   } catch (error) {
-    console.error(`Error vectorizing article ${article.id}:`, error);
+    console.error(`❌ Error vectorizing article ${article.id}:`, error);
     throw error;
   }
 }
