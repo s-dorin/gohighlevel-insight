@@ -117,10 +117,10 @@ export const KnowledgeBaseManager = () => {
         throw error;
       }
 
-      if (data.success) {
+      if (data.success || data.message) {
         toast({
-          title: 'Vectorization Complete',
-          description: `Processed ${data.processed} articles, failed: ${data.failed}`,
+          title: 'Vectorization Response',
+          description: data.message || `Processed ${data.processed || 0} articles, failed: ${data.failed || 0}`,
         });
         loadArticles();
       } else {
