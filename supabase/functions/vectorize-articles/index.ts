@@ -23,18 +23,14 @@ serve(async (req) => {
     console.log('🚀 Starting vectorization process');
     console.log('Qdrant URL:', QDRANT_URL);
     console.log('Qdrant API Key available:', !!QDRANT_API_KEY);
-    
-    // Return early for testing
-    return new Response(JSON.stringify({ 
-      message: 'Function is accessible',
-      qdrant_configured: !!QDRANT_API_KEY,
-      url: QDRANT_URL
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.log('OpenAI API Key available:', !!Deno.env.get('OPENAI_API_KEY'));
     
     if (!QDRANT_API_KEY) {
       throw new Error('QDRANT_API_KEY is not configured');
+    }
+
+    if (!Deno.env.get('OPENAI_API_KEY')) {
+      throw new Error('OPENAI_API_KEY is not configured');
     }
 
     // Get articles that haven't been indexed yet
@@ -137,7 +133,7 @@ async function ensureQdrantCollection(): Promise<void> {
         },
         body: JSON.stringify({
           vectors: {
-            size: 1536, // OpenAI embedding size
+            size: 1536, // text-embedding-3-small dimensions
             distance: 'Cosine'
           },
           optimizers_config: {
@@ -252,14 +248,38 @@ async function vectorizeAndStoreArticle(article: any): Promise<void> {
 }
 
 async function getEmbedding(text: string): Promise<number[]> {
-  // For now, return a mock embedding
-  // In production, you would call OpenAI's embedding API here
-  // We'll implement this when OpenAI API key is added
+  const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
   
-  // Generate a simple mock embedding of the right size (1536 dimensions)
-  const mockEmbedding = Array.from({ length: 1536 }, () => Math.random() - 0.5);
-  
-  // Normalize the vector
-  const magnitude = Math.sqrt(mockEmbedding.reduce((sum, val) => sum + val * val, 0));
-  return mockEmbedding.map(val => val / magnitude);
+  if (!openAIApiKey) {
+    throw new Error('OpenAI API key not configured');
+  }
+
+  try {
+    console.log('🤖 Calling OpenAI embeddings API...');
+    const response = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: text.substring(0, 8192), // Limit text length for embeddings
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('OpenAI API error:', error);
+      throw new Error(`OpenAI API error: ${response.status} ${error}`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ Got embedding with ${result.data[0].embedding.length} dimensions`);
+    
+    return result.data[0].embedding;
+  } catch (error) {
+    console.error('Error generating embedding:', error);
+    throw error;
+  }
 }
