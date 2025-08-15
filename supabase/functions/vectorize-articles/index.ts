@@ -32,15 +32,22 @@ serve(async (req) => {
     // Test 1: Check API keys
     results.tests.push('✅ API keys checked');
     
+    // Debug: Show available env vars (without values)
+    const envVars = Object.keys(Deno.env.toObject());
+    results.tests.push(`🔍 Available env vars: ${envVars.filter(k => k.includes('API')).join(', ')}`);
+    
     if (!QDRANT_API_KEY) {
       results.tests.push('❌ QDRANT_API_KEY missing');
       throw new Error('QDRANT_API_KEY not configured');
     }
     
-    if (!Deno.env.get('OPENAI_API_KEY')) {
-      results.tests.push('❌ OPENAI_API_KEY missing');
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiKey) {
+      results.tests.push('❌ OPENAI_API_KEY missing from environment');
       throw new Error('OPENAI_API_KEY not configured');
     }
+    
+    results.tests.push(`✅ OPENAI_API_KEY found (${openaiKey.substring(0, 8)}...)`);
 
     // Test 2: Qdrant connection
     results.tests.push('🔍 Testing Qdrant...');
