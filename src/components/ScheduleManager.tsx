@@ -6,6 +6,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Clock, Play, Pause, Settings, Zap } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Schedule {
   id: string;
@@ -23,6 +26,8 @@ export const ScheduleManager = () => {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStartingBatch, setIsStartingBatch] = useState(false);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
+  const [newScheduleType, setNewScheduleType] = useState<string>('weekly');
 
   useEffect(() => {
     loadSchedules();
@@ -80,6 +85,58 @@ export const ScheduleManager = () => {
       });
     } finally {
       setIsStartingBatch(false);
+    }
+  };
+
+  const handleUpdateSchedule = async (scheduleId: string, scheduleType: string) => {
+    try {
+      // Calculate next run time based on schedule type
+      const now = new Date();
+      let nextRunAt = new Date();
+      
+      switch (scheduleType) {
+        case 'daily':
+          nextRunAt.setDate(now.getDate() + 1);
+          nextRunAt.setHours(2, 0, 0, 0); // 2 AM next day
+          break;
+        case 'weekly':
+          nextRunAt.setDate(now.getDate() + (7 - now.getDay())); // Next Sunday
+          nextRunAt.setHours(2, 0, 0, 0); // 2 AM
+          break;
+        case 'monthly':
+          nextRunAt.setMonth(now.getMonth() + 1, 1); // First day of next month
+          nextRunAt.setHours(2, 0, 0, 0); // 2 AM
+          break;
+        default:
+          nextRunAt.setDate(now.getDate() + 7); // Default to weekly
+          nextRunAt.setHours(2, 0, 0, 0);
+      }
+
+      const { error } = await supabase
+        .from('vectorization_schedules')
+        .update({ 
+          next_run_at: nextRunAt.toISOString(),
+          schedule_name: `${scheduleType}-auto-vectorization`,
+          updated_at: now.toISOString()
+        })
+        .eq('id', scheduleId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Schedule Updated',
+        description: `Schedule changed to ${scheduleType} and will run ${nextRunAt.toLocaleString('ro-RO')}`,
+      });
+      
+      setSelectedScheduleId(null);
+      loadSchedules();
+    } catch (error) {
+      console.error('Error updating schedule:', error);
+      toast({
+        title: 'Eroare',
+        description: 'Nu s-a putut actualiza scheduleul',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -189,9 +246,51 @@ export const ScheduleManager = () => {
                   </div>
                   
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setSelectedScheduleId(schedule.id)}
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Configurare Schedule</DialogTitle>
+                          <DialogDescription>
+                            Modifică frecvența de rulare pentru vectorizarea automată.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="schedule-type" className="text-right">
+                              Frecvență
+                            </Label>
+                            <div className="col-span-3">
+                              <Select value={newScheduleType} onValueChange={setNewScheduleType}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="daily">Zilnic (2:00 AM)</SelectItem>
+                                  <SelectItem value="weekly">Săptămânal (Duminica 2:00 AM)</SelectItem>
+                                  <SelectItem value="monthly">Lunar (Prima zi, 2:00 AM)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button 
+                            onClick={() => selectedScheduleId && handleUpdateSchedule(selectedScheduleId, newScheduleType)}
+                          >
+                            Salvează
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
               ))}

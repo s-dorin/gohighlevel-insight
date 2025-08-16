@@ -83,11 +83,11 @@ serve(async (req) => {
       }
     }
 
-    // Get unvectorized articles
+    // Get unvectorized articles (articles without vector_id, regardless of last_indexed_at)
     const { data: articles, error: articlesError } = await supabase
       .from('kb_articles')
       .select('id, title, content, url')
-      .is('last_indexed_at', null)
+      .is('vector_id', null)
       .not('content', 'is', null)
       .limit(batch_size);
 
@@ -194,7 +194,7 @@ serve(async (req) => {
     const { count: remainingCount } = await supabase
       .from('kb_articles')
       .select('*', { count: 'exact', head: true })
-      .is('last_indexed_at', null)
+      .is('vector_id', null)
       .not('content', 'is', null);
 
     console.log(`Batch completed. Processed: ${processedCount}, Failed: ${failedCount}, Remaining: ${remainingCount || 0}`);
