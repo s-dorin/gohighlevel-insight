@@ -202,20 +202,55 @@ serve(async (req) => {
     // Update schedule tracking if this was an auto-scheduled run
     if (auto_scheduled) {
       try {
-        await supabase
+        // Find the most recently updated auto schedule (daily/weekly/monthly)
+        const { data: activeSchedule, error: scheduleFetchError } = await supabase
+          .from('vectorization_schedules')
+          .select('*')
+          .in('schedule_name', ['daily-auto-vectorization','weekly-auto-vectorization','monthly-auto-vectorization'])
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (scheduleFetchError) {
+          console.error('Failed to fetch active schedule:', scheduleFetchError.message);
+        }
+
+        const nowIso = new Date().toISOString();
+
+        // Compute next_run_at based on existing next_run_at and frequency
+        let nextRun = activeSchedule?.next_run_at ? new Date(activeSchedule.next_run_at) : new Date();
+        const freq = activeSchedule?.schedule_name?.startsWith('daily') ? 'daily' : activeSchedule?.schedule_name?.startsWith('weekly') ? 'weekly' : activeSchedule?.schedule_name?.startsWith('monthly') ? 'monthly' : 'weekly';
+        function addPeriod(d: Date) {
+          const nd = new Date(d);
+          if (freq === 'daily') nd.setDate(nd.getDate() + 1);
+          else if (freq === 'weekly') nd.setDate(nd.getDate() + 7);
+          else if (freq === 'monthly') nd.setMonth(nd.getMonth() + 1);
+          return nd;
+        }
+        const now = new Date();
+        if (!activeSchedule?.next_run_at) {
+          // If no next_run_at set yet, set to 02:00 today then roll forward at least once
+          nextRun.setHours(2, 0, 0, 0);
+        }
+        while (nextRun <= now) nextRun = addPeriod(nextRun);
+
+        const { error: updateErr } = await supabase
           .from('vectorization_schedules')
           .update({
-            last_run_at: new Date().toISOString(),
+            last_run_at: nowIso,
             articles_processed: processedCount,
             articles_failed: failedCount,
-            status: remainingCount && remainingCount > 0 ? 'running' : 'completed',
-            next_run_at: remainingCount && remainingCount > 0 
-              ? new Date().toISOString() 
-              : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // Next week
+            status: remainingCount && remainingCount > 0 ? 'running' : 'active',
+            next_run_at: nextRun.toISOString(),
+            updated_at: nowIso
           })
-          .eq('schedule_name', 'weekly-auto-vectorization');
-        
-        console.log('Updated schedule tracking');
+          .eq('id', activeSchedule?.id);
+
+        if (updateErr) {
+          console.error('Failed to update schedule tracking:', updateErr.message);
+        } else {
+          console.log('Updated schedule tracking');
+        }
       } catch (scheduleError) {
         console.error('Failed to update schedule tracking:', scheduleError);
       }
@@ -234,9 +269,10 @@ serve(async (req) => {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
             },
-            body: JSON.stringify({ 
-              batch_size: batch_size 
-            })
+              body: JSON.stringify({ 
+                batch_size: batch_size,
+                auto_scheduled: auto_scheduled
+              })
           }
         );
         
